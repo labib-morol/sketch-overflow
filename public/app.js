@@ -443,5 +443,5 @@ $('#btnLeave').onclick = () => location.reload();
 
 fetch('/api/stats').then(r => r.json()).then(d => {
   $('#wordStats').textContent =
-    `${d.words} words loaded — ${d.cse} CSE · ${d.engg} engineering · ${d.general} general`;
+    `${d.words} words loaded — ${d.cse} CSE · ${d.engg} engineering · ${d.general} general · ${d.friends} classmates`;
 }).catch(() => {});

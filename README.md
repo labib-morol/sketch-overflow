@@ -26,14 +26,15 @@ Use **Render.com's free tier** instead (no credit card, no Docker needed):
 Notes on the free tier: the server sleeps after ~15 minutes idle; the next player to open the link
 waits ~50 seconds while it wakes. Every deploy restarts and clears rooms.
 
-Push to GitHub:
+Push to GitHub (repo `labib-morol/sketch-overflow` already exists — this is for a fresh copy):
 
 ```bash
 cd sketch-overflow
 git init -b main
 git add -A
 git commit -m "SketchOverflow: draw & guess party game"
-gh repo create sketch-overflow --public --source=. --push   # needs `gh auth login` first
+git remote add origin https://github.com/<you>/sketch-overflow.git
+git push -u origin main
 ```
 
 ## Play with friends
