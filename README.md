@@ -1,6 +1,6 @@
 # SketchOverflow 🎨⌨️
 
-A Skribbl-style draw & guess party game with a **CSE / Engineering word bank** — 726 words (247 CSE · 228 engineering · 251 general), difficulty-tagged, and **never repeating** within a session.
+A Skribbl-style draw & guess party game with a **CSE / Engineering word bank** — 877 words (CSE · engineering · general · classmates), difficulty-tagged, beginner-friendly (every turn offers at least 2 easy words), and **never repeating** within a session.
 
 Zero npm dependencies — pure Node.js (http + Server-Sent Events). No install step.
 
@@ -50,12 +50,12 @@ git push -u origin main
 
 ## Game rules
 
-- Each round, every player takes a turn drawing; they pick 1 of 3 words (CSE · Engineering · General, easy/medium/hard).
+- Each round, every player takes a turn drawing; they pick 1 of 5 words (CSE · Engineering · General · Classmates, easy/medium/hard — at least 2 easy per turn).
 - Guessers type guesses in chat. Wrong guesses are visible; a typo close to the word shows "💡 is close!".
 - Points: guessers get `100 + time bonus`; the drawer gets +35 per correct guesser.
-- Letter hints auto-reveal at 50% and 25% time for longer words.
+- Letter hints auto-reveal at 65%, 35% (and 15% for very long words) of the countdown.
 - If everyone guesses early, the turn ends early.
-- Words are drawn from a shuffled bag and tracked per room — a word never comes back until the whole bank is exhausted (~25 full games).
+- Words are drawn from a shuffled bag at random positions and tracked per room — a word never comes back until the whole bank is exhausted.
 
 ## Drawing tools
 

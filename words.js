@@ -31,7 +31,13 @@ const BANK = {
       'notification bell', 'battery icon', 'airplane mode', 'dark mode', 'popup ad', 'spam email',
       'caps lock', 'enter key', 'space bar', 'ctrl alt delete', 'blue screen', 'hacker hoodie', 'captcha',
       'barcode', 'qr code', 'scroll bar', 'settings gear', 'volume icon', 'play button', 'webcam',
-      'touch screen', 'stylus pen', 'sd card', 'sim card', 'ethernet port', 'restart button'
+      'touch screen', 'stylus pen', 'sd card', 'sim card', 'ethernet port', 'restart button',
+      'computer', 'computer mouse', 'mouse pad', 'desktop computer', 'smartphone', 'selfie stick',
+      'memory card', 'pen drive', 'web camera', 'projector', 'loudspeaker', 'remote control',
+      'digital clock', 'stopwatch', 'calculator', 'typewriter', 'landline phone', 'floppy disk',
+      'cassette tape', 'video game controller', 'atm machine', 'television', 'youtube',
+      'google search', 'whatsapp', 'instagram', 'electric switch', 'extension board',
+      'emergency light', 'voltage stabilizer'
     ],
     medium: [
       'CPU', 'GPU', 'RAM stick', 'motherboard', 'hard disk', 'SSD', 'heat sink', 'cooling fan', 'power supply',
@@ -83,7 +89,11 @@ const BANK = {
       'elevator', 'clock tower', 'windmill', 'watermill', 'water well', 'anchor', 'lighthouse',
       'fire hydrant', 'fire extinguisher', 'hinge', 'padlock', 'chain', 'hook', 'rope knot', 'barrel',
       'funnel', 'valve handle', 'faucet', 'shower head', 'radiator', 'thermostat', 'smoke alarm',
-      'power socket', 'extension cord', 'circuit breaker panel'
+      'power socket', 'extension cord', 'circuit breaker panel',
+      'scissors', 'stapler', 'paper clip', 'bottle opener', 'can opener', 'corkscrew',
+      'rubber band', 'spirit level', 'sandpaper', 'paint roller', 'shovel', 'pickaxe',
+      'wheelbarrow', 'lawn mower', 'hacksaw', 'nut and bolt', 'wedge', 'ramp', 'crowbar',
+      'sledgehammer', 'screw jack'
     ],
     medium: [
       'piston', 'turbine', 'engine block', 'gearbox', 'pipe wrench', 'solar panel', 'wind turbine',
@@ -149,7 +159,16 @@ const BANK = {
       'stethoscope', 'wheelchair', 'crutches', 'bandage', 'pill bottle', 'thermometer', 'toothbrush',
       'toothpaste', 'hairbrush', 'comb', 'razor', 'perfume bottle', 'nail polish', 'hand fan', 'quilt',
       'wind chime', 'bird cage', 'dog house', 'fish bowl', 'hammock chair', 'lantern', 'campfire',
-      'sleeping bag', 'canoe', 'paddle', 'life jacket', 'snowman', 'sled', 'igloo dome', 'totem pole'
+      'sleeping bag', 'canoe', 'paddle', 'life jacket', 'snowman', 'sled', 'igloo dome', 'totem pole',
+      'banana', 'pineapple', 'watermelon', 'strawberry', 'mango', 'coconut', 'grapes', 'carrot',
+      'tomato', 'onion', 'pumpkin', 'bread loaf', 'sandwich', 'honey jar',
+      'singara', 'samosa', 'fuchka', 'chotpoti', 'biriyani', 'roshogolla', 'mishti doi',
+      'hilsa fish', 'paratha', 'luchi', 'pitha', 'jhal muri', 'chanachur', 'milk tea',
+      'sugarcane juice', 'lungi', 'panjabi', 'saree', 'salwar kameez', 'sandal', 'slipper',
+      'school bag', 'tiffin box', 'cycle rickshaw', 'auto rickshaw', 'helicopter', 'bullock cart',
+      'container ship', 'fishing boat', 'water lily', 'lotus pond', 'bamboo tree', 'banana tree',
+      'rice field', 'paddy field', 'crow', 'vulture', 'kingfisher', 'sparrow', 'pigeon',
+      'squirrel', 'mongoose', 'bengal tiger'
     ]
   },
   friends: {
@@ -199,15 +218,26 @@ function buildBag(used) {
   return shuffle(pool.slice());
 }
 
-// Pop `count` distinct choices off the bag (refills if somehow short).
-function choicesFrom(bag, count = 3) {
-  const out = [];
-  while (out.length < count) {
-    if (!bag.length) bag.push(...shuffle(WORDS.slice()));
-    const w = bag.pop();
-    if (!out.some(c => c.word === w.word)) out.push(w);
+// Pop `count` choices at random positions (never from the same end — keeps
+// draws unpredictable) and guarantee a few easy picks for beginners.
+function choicesFrom(bag, count = 5, easyCount = 2) {
+  const taken = [];
+  const takeAt = (i) => taken.push(bag.splice(i, 1)[0]);
+
+  // start with up to easyCount easy words so beginners always have options
+  let easyLeft = bag.reduce((n, w) => n + (w.diff === 'easy' ? 1 : 0), 0);
+  while (taken.length < easyCount && easyLeft > 0) {
+    let i = Math.floor(Math.random() * bag.length);
+    while (bag[i].diff !== 'easy') i = (i + 1) % bag.length;
+    takeAt(i);
+    easyLeft--;
   }
-  return out;
+
+  while (taken.length < count) {
+    if (!bag.length) bag.push(...shuffle(WORDS.slice()));
+    takeAt(Math.floor(Math.random() * bag.length));
+  }
+  return taken;
 }
 
 // Mask: letters -> '_'; keep spaces. Revealed indices show their letter.

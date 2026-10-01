@@ -159,7 +159,7 @@ function beginTurn(room) {
   room.snapshot = null;
   room.lastScores = [];
   room.phase = 'choosing';
-  room.choices = W.choicesFrom(room.bag);
+  room.choices = W.choicesFrom(room.bag, 5);
   room.chooseEndsAt = Date.now() + CHOOSE_TIME * 1000;
 
   broadcast(room, 'state', state(room));
@@ -172,8 +172,9 @@ function pickWord(room, word, auto = false) {
   word = W.norm(word);
   const choice = room.choices.find(c => c.word === word);
   if (!choice) return;
-  // unchosen options go back into the bag so they can appear again later
-  for (const c of room.choices) if (c.word !== word) room.bag.push(c);
+  // unchosen options go back into the bag at random spots — never the tail,
+  // so the same words don't resurface for the next players
+  for (const c of room.choices) if (c.word !== word) room.bag.splice(rnd(room.bag.length + 1), 0, c);
   room.choices = [];
 
   room.word = word;
@@ -182,8 +183,9 @@ function pickWord(room, word, auto = false) {
   room.revealed = new Set();
   const letters = word.replace(/ /g, '').length;
   room.hintTimes = [];
-  if (letters >= 4) room.hintTimes.push(Math.floor(room.settings.drawTime * 0.5));
-  if (letters >= 7) room.hintTimes.push(Math.floor(room.settings.drawTime * 0.25));
+  if (letters >= 4) room.hintTimes.push(Math.floor(room.settings.drawTime * 0.65));
+  if (letters >= 7) room.hintTimes.push(Math.floor(room.settings.drawTime * 0.35));
+  if (letters >= 11) room.hintTimes.push(Math.floor(room.settings.drawTime * 0.15));
 
   room.turnTotal = room.settings.drawTime;
   room.turnEndsAt = Date.now() + room.turnTotal * 1000;
