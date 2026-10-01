@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SketchOverflow — draw &amp; guess for CSE folks</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎨</text></svg>" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ HOME ============ -->
+    <section id="home" class="view">
+      <div class="hero">
+        <h1>Sketch<span>Overflow</span><span class="cursor">▊</span></h1>
+        <p class="tag">Draw it. Guess it. Ship it.</p>
+        <p class="sub" id="wordStats">loading word bank…</p>
+      </div>
+
+      <div class="card home-card">
+        <label class="lbl" for="name">Nickname</label>
+        <input id="name" maxlength="16" placeholder="e.g. segfault_sam" autocomplete="off" />
+
+        <button id="btnCreate" class="btn primary big">🎮 Create Room</button>
+
+        <div class="or">— or join a friend —</div>
+
+        <div class="join-row">
+          <input id="code" maxlength="4" placeholder="CODE" class="code-in" autocomplete="off" />
+          <button id="btnJoin" class="btn big">Join</button>
+        </div>
+        <div id="homeErr" class="err"></div>
+      </div>
+
+      <div class="home-hints">
+        <span>👥 2–12 players</span><span>·</span>
+        <span>🖊️ real-time canvas</span><span>·</span>
+        <span>🧠 CSE + Engineering words</span><span>·</span>
+        <span>♻️ never repeats a word</span>
+      </div>
+    </section>
+
+    <!-- ============ ROOM ============ -->
+    <section id="room" class="view hidden">
+      <header>
+        <div class="logo">Sketch<span>Overflow</span></div>
+        <button id="roomChip" class="chip" title="Copy invite link">Room <b id="codeTxt">----</b> ⧉</button>
+        <div id="roundTxt" class="chip subtle"></div>
+        <button id="btnLeave" class="chip danger" title="Leave room">✕</button>
+      </header>
+
+      <main>
+        <aside id="players" class="panel"></aside>
+
+        <div class="stage">
+          <!-- LOBBY -->
+          <div id="lobbyPanel" class="panel lobby hidden">
+            <h2>Lobby</h2>
+            <p class="muted">Share the room code or invite link with your friends.</p>
+            <div class="big-code" id="bigCode">----</div>
+            <div class="settings">
+              <div class="set">
+                <label>Rounds</label>
+                <select id="setRounds">
+                  <option value="1">1</option><option value="2">2</option>
+                  <option value="3" selected>3</option><option value="4">4</option>
+                  <option value="5">5</option><option value="6">6</option>
+                </select>
+              </div>
+              <div class="set">
+                <label>Draw time</label>
+                <select id="setTime">
+                  <option value="30">30s</option><option value="45">45s</option>
+                  <option value="60" selected>60s</option><option value="80">80s</option>
+                </select>
+              </div>
+            </div>
+            <button id="btnStart" class="btn primary big">▶ Start Game</button>
+            <p id="waitTxt" class="muted hidden">Waiting for the host to start…</p>
+          </div>
+
+          <!-- GAME -->
+          <div id="gamePanel" class="hidden">
+            <div class="game-top">
+              <div id="wordBox" class="word"></div>
+              <div id="timerWrap"><div id="timerBar"></div></div>
+              <div id="timerTxt">–</div>
+            </div>
+            <div class="canvas-wrap">
+              <canvas id="board" width="800" height="600"></canvas>
+              <div id="overlay" class="overlay"><div class="overlay-card" id="overlayCard"></div></div>
+            </div>
+            <div id="tools" class="tools hidden">
+              <div id="colors"></div>
+              <div class="sizes">
+                <button class="size" data-s="4"><span></span></button>
+                <button class="size" data-s="8"><span></span></button>
+                <button class="size" data-s="14"><span></span></button>
+                <button class="size" data-s="24"><span></span></button>
+              </div>
+              <button id="btnEraser" class="tbtn" title="Eraser">🧽</button>
+              <button id="btnUndo" class="tbtn" title="Undo">↩️</button>
+              <button id="btnClear" class="tbtn" title="Clear all">🗑️</button>
+            </div>
+            <div id="statusLine" class="status"></div>
+          </div>
+        </div>
+
+        <aside class="chat panel">
+          <div id="chatLog"></div>
+          <form id="chatForm" autocomplete="off">
+            <input id="chatIn" maxlength="60" placeholder="type your guess…" />
+            <button class="btn" type="submit">➤</button>
+          </form>
+        </aside>
+      </main>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# Render.com blueprint — connect this repo on render.com (New + → Blueprint)
+# and it deploys with the settings below on the free tier.
+services:
+  - type: web
+    name: sketch-overflow
+    runtime: node
+    plan: free
+    buildCommand: "node --check server.js && node --check words.js"
+    startCommand: "node server.js"
+    healthCheckPath: /api/stats
