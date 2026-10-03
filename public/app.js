@@ -1,23 +1,47 @@
 /* SketchOverflow client */
 const $ = (s) => document.querySelector(s);
+// captured BEFORE the socket constructor writes its id — non-null only when
+// THIS tab is reloading (a brand-new tab has no stored id yet)
+const PRIOR_TAB_ID = sessionStorage.getItem('so_id');
 
 /* ---- tiny realtime transport: SSE (server→client) + POST (client→server) ---- */
 class MiniSock {
   constructor() {
-    this.id = (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+    // survive page reloads: same tab keeps the same id, so the server
+    // recognizes the player and restores score/turn state
+    this.id = sessionStorage.getItem('so_id')
+      || (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
+    sessionStorage.setItem('so_id', this.id);
     this.code = null;
     this.handlers = {};
+    this.es = null;
+    this.errStreak = 0;
+    this.autoJoin = false;
   }
   connect(params) {
     this.code = params.code || null;
+    if (this.es) { try { this.es.close(); } catch { /* was closed */ } }
     const qs = new URLSearchParams({ action: params.action, name: params.name || '', id: this.id });
     if (params.code) qs.set('code', params.code);
     const es = new EventSource('/api/stream?' + qs.toString());
+    this.es = es;
     es.onmessage = (e) => {
+      this.errStreak = 0;
       let m; try { m = JSON.parse(e.data); } catch { return; }
       (this.handlers[m.ev] || []).forEach(fn => { try { fn(m.d); } catch (err) { console.error(err); } });
     };
-    es.onerror = () => { /* EventSource retries on its own */ };
+    es.onerror = () => {
+      // brief drops heal via the server's 20s grace window + auto-resume here
+      this.errStreak++;
+      if (this.errStreak >= 5) {
+        try { es.close(); } catch { /* already closed */ }
+        if (this.code && localStorage.getItem('so_name')) {
+          setTimeout(() => {
+            this.connect({ action: 'resume', code: this.code, name: localStorage.getItem('so_name') });
+          }, 2000);
+        }
+      }
+    };
   }
   on(ev, fn) { (this.handlers[ev] = this.handlers[ev] || []).push(fn); }
   emit(ev, data) {
@@ -31,6 +55,47 @@ class MiniSock {
 const socket = new MiniSock();
 socket.on('roomGone', () => { alert('This room has closed.'); location.href = '/'; });
 
+/* ---- sound effects: synthesized with WebAudio, no audio files ---- */
+const Sfx = (() => {
+  let actx = null;
+  let muted = localStorage.getItem('so_mute') === '1';
+  const ac = () => (actx ||= new (window.AudioContext || window.webkitAudioContext)());
+  function tone(freq, dur, { type = 'sine', vol = 0.14, delay = 0, slide = 0 } = {}) {
+    if (muted) return;
+    try {
+      const c = ac();
+      if (c.state === 'suspended') c.resume();
+      const t = c.currentTime + delay;
+      const o = c.createOscillator(), g = c.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.015);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(c.destination);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    } catch { /* audio unavailable */ }
+  }
+  return {
+    toggle() { muted = !muted; localStorage.setItem('so_mute', muted ? '1' : '0'); return muted; },
+    get muted() { return muted; },
+    unlock() { try { ac(); if (actx.state === 'suspended') actx.resume(); } catch { /* no audio */ } },
+    yourTurn()  { tone(523, .12); tone(659, .12, { delay: .12 }); tone(784, .28, { delay: .24 }); },
+    wordChosen(){ tone(440, .1, { type: 'triangle' }); tone(660, .16, { delay: .1 }); },
+    guessed()   { tone(880, .1, { type: 'triangle', vol: .12 }); tone(1175, .2, { delay: .1, vol: .12 }); },
+    youGotIt()  { tone(660, .1); tone(880, .1, { delay: .1 }); tone(1318, .3, { delay: .2 }); },
+    close()     { tone(330, .12, { type: 'square', vol: .05 }); },
+    tick()      { tone(1000, .04, { type: 'square', vol: .045 }); },
+    timeUp()    { tone(240, .5, { type: 'sawtooth', vol: .09, slide: -140 }); },
+    reveal()    { tone(392, .15); tone(523, .3, { delay: .15 }); },
+    gameOver()  { [523, 659, 784, 1046].forEach((f, i) => tone(f, .22, { delay: i * .16 })); },
+    roundStart(){ tone(587, .1); tone(587, .18, { delay: .12 }); },
+    join()      { tone(700, .08, { vol: .08 }); tone(900, .12, { delay: .08, vol: .08 }); }
+  };
+})();
+
 const CAT_LABEL = { cse: 'CSE', engg: 'Engineering', general: 'General', friends: 'Classmate' };
 const COLORS = ['#111111', '#7f8c8d', '#ffffff', '#e74c3c', '#e67e22', '#f1c40f',
   '#2ecc71', '#16a085', '#3498db', '#274690', '#7c5cff', '#e84393', '#8b5a2b'];
@@ -41,6 +106,7 @@ let myWord = '';            // full word (drawer or solved guesser)
 let pendingChoices = null;  // drawer's word options
 let lastTurnEnd = null;
 let lastGameEnd = null;
+let lastTickT = -1;
 
 /* ================= canvas ================= */
 const board = $('#board');
@@ -302,8 +368,7 @@ function renderOverlay() {
   } else if (st.phase === 'turnend' && lastTurnEnd) {
     const d = lastTurnEnd;
     showOverlay(`
-      <h2>The word was</h2>
-      <div class="big-word">${esc(d.word)}</div>
+      ${d.word ? `<h2>The word was</h2><div class="big-word">${esc(d.word)}</div>` : `<h2>Turn skipped</h2>`}
       ${d.deltas && d.deltas.length
         ? `<div class="deltas">${d.deltas.map(x =>
             `<div>${x.kind === 'drawer' ? '🎨' : '✅'} ${esc(x.name)} <b style="color:var(--green)">+${x.pts}</b></div>`).join('')}</div>`
@@ -355,23 +420,25 @@ socket.on('joined', ({ code }) => {
   toast(`🎉 Joined room ${code} — share the link!`);
 });
 
-socket.on('state', (s) => { st = s; renderAll(); });
-socket.on('yourWords', (d) => { pendingChoices = d; renderAll(); });
+socket.on('state', (s) => { st = s; socket.autoJoin = false; renderAll(); });
+socket.on('yourWords', (d) => { pendingChoices = d; Sfx.yourTurn(); renderAll(); });
 socket.on('wordChosen', (d) => {
   pendingChoices = null;
   myWord = '';
   strokes = [];
   redraw();
+  lastTickT = -1;
   if (st) st.hintWord = d.hintWord;
+  Sfx.wordChosen();
   renderAll();
 });
 socket.on('yourWord', (d) => { myWord = d.word; renderAll(); });
 socket.on('hint', (d) => { if (st) { st.hintWord = d.hintWord; renderWordBox(); } });
-socket.on('youGuessed', (d) => { myWord = d.word; renderAll(); });
-socket.on('playerGuessed', (d) => addSys(`🎉 ${d.name} guessed the word! +${d.pts}`));
-socket.on('turnEnd', (d) => { lastTurnEnd = d; renderAll(); });
-socket.on('gameEnd', (d) => { lastGameEnd = d; renderAll(); });
-socket.on('roundStart', (d) => addSys(`🔔 Round ${d.round} of ${d.totalRounds}`));
+socket.on('youGuessed', (d) => { myWord = d.word; Sfx.youGotIt(); renderAll(); });
+socket.on('playerGuessed', (d) => { Sfx.guessed(); addSys(`🎉 ${d.name} guessed the word! +${d.pts}`); });
+socket.on('turnEnd', (d) => { lastTurnEnd = d; Sfx.reveal(); renderAll(); });
+socket.on('gameEnd', (d) => { lastGameEnd = d; Sfx.gameOver(); renderAll(); });
+socket.on('roundStart', (d) => { Sfx.roundStart(); addSys(`🔔 Round ${d.round} of ${d.totalRounds}`); });
 socket.on('backToLobby', () => {
   lastTurnEnd = null; lastGameEnd = null; pendingChoices = null;
   strokes = []; redraw();
@@ -379,14 +446,23 @@ socket.on('backToLobby', () => {
   renderAll();
 });
 socket.on('chat', addChat);
-socket.on('sys', (d) => addSys(d.text));
+socket.on('sys', (d) => {
+  addSys(d.text);
+  if (/joined the game/.test(d.text)) Sfx.join();
+  else if (/is close/.test(d.text)) Sfx.close();
+});
 socket.on('errMsg', (t) => {
+  if (socket.autoJoin && /not found/i.test(t)) { location.href = '/'; return; }
   if ($('#home').classList.contains('hidden')) toast('⚠️ ' + t);
   else $('#homeErr').textContent = t;
 });
 
 socket.on('timer', ({ t, total }) => {
   $('#timerTxt').textContent = t;
+  if (st && st.phase === 'drawing' && t !== lastTickT && t >= 0 && t <= 10) {
+    lastTickT = t;
+    if (t === 0) Sfx.timeUp(); else Sfx.tick();
+  }
   const pct = total ? Math.max(0, Math.min(100, (t / total) * 100)) : 0;
   const bar = $('#timerBar');
   bar.style.width = pct + '%';
@@ -405,6 +481,20 @@ if (savedName) $('#name').value = savedName;
 const urlRoom = new URLSearchParams(location.search).get('room');
 if (urlRoom) $('#code').value = urlRoom.toUpperCase();
 $('#name').focus();
+
+// auto-rejoin after a page reload — the tab kept its player id in sessionStorage,
+// so the server restores score and seat instead of kicking the player
+if (urlRoom && savedName && PRIOR_TAB_ID) {
+  socket.autoJoin = true;
+  socket.connect({ action: 'join', code: urlRoom.toUpperCase(), name: savedName });
+}
+
+/* ================= sound toggle ================= */
+const soundBtn = $('#btnSound');
+const paintSound = () => { soundBtn.textContent = Sfx.muted ? '🔇' : '🔊'; };
+paintSound();
+soundBtn.onclick = () => { Sfx.toggle(); paintSound(); };
+document.addEventListener('pointerdown', () => Sfx.unlock(), { once: true });
 
 function requireName() {
   const name = $('#name').value.trim();

@@ -23,6 +23,7 @@ const MIME = {
   '.json': 'application/json'
 };
 
+const pendingLeaves = new Map();   // connId -> grace timer before real removal
 const rooms = new Map();       // code -> room
 const conns = new Map();       // connId -> {id, res}
 const playerRoom = new Map();  // connId -> code
@@ -117,10 +118,32 @@ function startTimer(room) {
 function tick(room) {
   const now = Date.now();
   if (room.phase === 'choosing') {
+    if (!conns.has(room.drawerId)) {
+      // artist's connection dropped — give them a few seconds to come back
+      if (!room.drawerGoneAt) room.drawerGoneAt = now;
+      else if (now - room.drawerGoneAt > 5000) {
+        room.drawerGoneAt = 0;
+        room.phase = 'turnend';
+        room.turnEndsAt = now + 1500;
+        broadcast(room, 'sys', { text: '⏭️ The artist disconnected — skipping their pick.' });
+      }
+      return;
+    }
+    room.drawerGoneAt = 0;
     const left = Math.max(0, Math.ceil((room.chooseEndsAt - now) / 1000));
     broadcast(room, 'timer', { t: left, total: CHOOSE_TIME });
     if (left <= 0) pickWord(room, room.choices[rnd(room.choices.length)].word, true);
   } else if (room.phase === 'drawing') {
+    if (!conns.has(room.drawerId)) {
+      if (!room.drawerGoneAt) room.drawerGoneAt = now;
+      else if (now - room.drawerGoneAt > 10000) {
+        room.drawerGoneAt = 0;
+        endTurn(room, 'The artist disconnected!');
+        return;
+      }
+    } else {
+      room.drawerGoneAt = 0;
+    }
     const left = Math.max(0, Math.ceil((room.turnEndsAt - now) / 1000));
     broadcast(room, 'timer', { t: left, total: room.turnTotal });
     maybeHint(room, left);
@@ -158,6 +181,7 @@ function beginTurn(room) {
   room.revealed = new Set();
   room.snapshot = null;
   room.lastScores = [];
+  room.drawerGoneAt = 0;
   room.phase = 'choosing';
   room.choices = W.choicesFrom(room.bag, 5);
   room.chooseEndsAt = Date.now() + CHOOSE_TIME * 1000;
@@ -420,8 +444,9 @@ function openStream(req, res, q) {
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no'   // keep proxies (Render) from buffering events
   });
   res.write(':ok\n\n');
 
@@ -430,18 +455,29 @@ function openStream(req, res, q) {
   if (old) { try { old.res.end(); } catch { /* already gone */ } }
   conns.set(id, { id, res });
 
+  // same id is back within the grace window — cancel its scheduled removal
+  const pending = pendingLeaves.get(id);
+  if (pending) { clearTimeout(pending); pendingLeaves.delete(id); }
+
   const hb = setInterval(() => { try { res.write(':hb\n\n'); } catch { /* drop */ } }, 25000);
   req.on('close', () => {
     clearInterval(hb);
     if (conns.get(id) && conns.get(id).res === res) {
       conns.delete(id);
-      leave(id);
+      // grace period: page reloads / brief drops reconnect with the same id
+      if (playerRoom.has(id)) {
+        const t = setTimeout(() => { pendingLeaves.delete(id); leave(id); }, 20000);
+        pendingLeaves.set(id, t);
+      }
     }
   });
 
   const resume = (room) => {
     playerRoom.set(id, room.code);
     sendTo(id, 'joined', { code: room.code });
+    if (room.phase === 'choosing' && room.drawerId === id && room.choices.length) {
+      sendTo(id, 'yourWords', { choices: room.choices });   // restore the picker after a drop
+    }
     if (room.phase === 'drawing' && room.snapshot) sendTo(id, 'snapshot', { data: room.snapshot });
     sendTo(id, 'state', state(room));
     broadcast(room, 'state', state(room));
